@@ -1,0 +1,556 @@
+/* ===== Bind a Few More 설정 패널 =====
+   간격은 Tavern Helper(Tailwind)의 --spacing 을 우선, 없으면 4px 기준 */
+.char-binder-settings {
+    --cb-sp: var(--spacing, 0.25rem);
+    --cb-line: var(--grey5050a, rgba(128, 128, 128, 0.5));
+    --cb-radius: var(--radius-lg, 0.5rem);
+    --cb-accent: var(--SmartThemeQuoteColor);
+    --cb-track-off: var(--color-gray-300, #d1d5db);
+    --cb-thumb: var(--color-white, #fff);
+    --cb-strong: var(--font-weight-semibold, 600);
+}
+
+/* 테마가 입힌 그림자/필터 제거 (입력창, 선택된 배경 썸네일의 강조 효과는 제외) */
+.char-binder-settings *:not(input):not(.cb-bg-item) {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+}
+
+/* 박스 */
+.char-binder-settings .cb-box {
+    margin: calc(var(--cb-sp) * 3) 0;
+    padding: calc(var(--cb-sp) * 3) calc(var(--cb-sp) * 3.75);
+    border: 1px solid var(--cb-line) !important;
+    border-radius: var(--cb-radius);
+    min-inline-size: 0;
+}
+
+.char-binder-settings .cb-box:first-of-type {
+    margin-top: calc(var(--cb-sp) * 2.5);
+}
+
+.char-binder-settings .cb-box legend {
+    width: auto;
+    margin: 0;
+    padding: 0 calc(var(--cb-sp) * 1.5);
+    font-size: 0.85em;
+    opacity: 0.7;
+    border: 0;
+}
+
+.char-binder-settings .cb-box legend i {
+    margin-right: calc(var(--cb-sp) * 1.5);
+}
+
+/* 설명 문구 */
+.char-binder-settings .cb-desc {
+    display: block;
+    opacity: 0.65;
+    line-height: 1.4;
+    margin: 0;
+}
+
+/* 접이식 박스: 접히면 제목 + 한 줄 설명만 남김 */
+.char-binder-settings .cb-toggle {
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.char-binder-settings .cb-box legend i.cb-chevron {
+    margin: 0 0 0 calc(var(--cb-sp) * 1.5);
+    font-size: 0.8em;
+    transition: transform 0.2s;
+}
+
+.char-binder-settings .cb-collapsible:not(.cb-collapsed) .cb-chevron {
+    transform: rotate(90deg);
+}
+
+.char-binder-settings .cb-fold-hint {
+    display: none;
+}
+
+.char-binder-settings .cb-collapsible.cb-collapsed > .cb-fold-hint {
+    display: block;
+    cursor: pointer;
+}
+
+.char-binder-settings .cb-collapsible.cb-collapsed > *:not(legend):not(.cb-fold-hint) {
+    display: none;
+}
+
+/* 항목 칸: 칸 사이에 구분선 */
+.char-binder-settings .cb-item {
+    padding: calc(var(--cb-sp) * 3) 0;
+}
+
+/* 비활성 (내용이 있어야 켜고 끌 수 있는 항목) */
+.char-binder-settings .cb-item.cb-disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.char-binder-settings .cb-item + .cb-item {
+    border-top: 1px solid var(--cb-line);
+}
+
+.char-binder-settings .cb-box legend + .cb-item {
+    padding-top: 0;
+}
+
+.char-binder-settings .cb-item:last-of-type,
+.char-binder-settings .cb-item:last-child {
+    padding-bottom: 0;
+}
+
+/* 옵션 한 줄: 이름은 왼쪽, 토글은 맨 오른쪽 */
+.char-binder-settings .cb-opt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(var(--cb-sp) * 3);
+    margin: 0 0 var(--cb-sp);
+    cursor: pointer;
+}
+
+.char-binder-settings .cb-opt-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: var(--cb-strong);
+}
+
+/* 토글: 둥근 트랙 + 동그라미, 켜면 테마 인용문 색 */
+.char-binder-settings .cb-switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 30px;
+    height: 16px;
+}
+
+.char-binder-settings .cb-switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 1;
+}
+
+.char-binder-settings .cb-slider {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: 9999px;
+    background: var(--cb-track-off);
+    transition: background-color 0.3s;
+}
+
+.char-binder-settings .cb-slider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    background: var(--cb-thumb);
+    transform: translateY(-50%);
+    transition: transform 0.3s;
+}
+
+.char-binder-settings .cb-switch input:checked + .cb-slider {
+    background: var(--cb-accent);
+}
+
+.char-binder-settings .cb-switch input:checked + .cb-slider::after {
+    transform: translate(14px, -50%);
+}
+
+.char-binder-settings .cb-switch input:focus-visible + .cb-slider {
+    outline: 1px solid var(--cb-accent);
+    outline-offset: 1px;
+}
+
+/* ===== 박스 안쪽 내용 ===== */
+/* 인용문 스타일: 왼쪽 막대(테마의 인용문 색) + 연한 배경 */
+.char-binder-settings .cb-quote {
+    margin: calc(var(--cb-sp) * 3) 0;
+    padding: calc(var(--cb-sp) * 2) calc(var(--cb-sp) * 3);
+    border-left: 3px solid var(--cb-accent);
+    border-radius: 0 var(--cb-radius) var(--cb-radius) 0;
+    background: var(--black30a);
+}
+
+.char-binder-settings .cb-quote .cb-target {
+    margin: 0 0 calc(var(--cb-sp) * 2);
+    opacity: 0.85;
+}
+
+.char-binder-settings .cb-quote .cb-target:last-child {
+    margin-bottom: 0;
+}
+
+.char-binder-settings .cb-quote .cb-target-toggle {
+    margin: 0;
+}
+
+.char-binder-settings .cb-hint {
+    display: block;
+    margin-top: 4px;
+    opacity: 0.65;
+}
+
+.char-binder-settings .cb-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.char-binder-settings .cb-row .text_pole {
+    flex: 1;
+    margin: 0;
+}
+
+.char-binder-settings .cb-row input[type="range"] {
+    width: 90px;
+    flex: none;
+}
+
+.char-binder-settings #cb_bg_url {
+    margin-top: 6px;
+}
+
+/* 선택한 배경 미리보기 */
+.char-binder-settings .cb-bg-preview {
+    display: none;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    max-height: 200px;
+    margin-bottom: 6px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background-size: cover;
+    background-position: center;
+}
+
+/* 썸네일 갤러리 */
+.char-binder-settings .cb-bg-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--cb-cols, 3), 1fr);
+    gap: 6px;
+    max-height: 420px;
+    overflow-y: auto;
+    margin-top: 6px;
+    padding: 6px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: var(--black30a);
+}
+
+.char-binder-settings .cb-bg-item {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--black50a);
+    transition: transform 0.1s, border-color 0.1s;
+    /* 화면 밖 썸네일은 레이아웃/페인트를 건너뛴다 (배경이 많을 때 효과 큼) */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 90px;
+}
+
+.char-binder-settings .cb-bg-item[hidden] {
+    display: none;
+}
+
+.char-binder-settings .cb-bg-item:hover {
+    transform: scale(1.03);
+}
+
+.char-binder-settings .cb-bg-item.selected {
+    border-color: var(--cb-accent);
+    box-shadow: 0 0 6px var(--cb-accent);
+}
+
+.char-binder-settings .cb-bg-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.char-binder-settings .cb-bg-name {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 2px 4px;
+    font-size: 0.7em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+
+.char-binder-settings .cb-bg-item:hover .cb-bg-name,
+.char-binder-settings .cb-bg-item.selected .cb-bg-name {
+    opacity: 1;
+}
+
+.char-binder-settings .cb-bg-empty {
+    grid-column: 1 / -1;
+    text-align: center;
+    opacity: 0.6;
+    padding: 12px;
+}
+
+.char-binder-settings .cb-bg-selected {
+    margin: 4px 0;
+    opacity: 0.85;
+    word-break: break-all;
+}
+
+/* 조각 CSS 카드 */
+.char-binder-settings .cb-css-list {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--cb-sp) * 2);
+}
+
+.char-binder-settings .cb-css-empty {
+    padding: calc(var(--cb-sp) * 2) 0;
+    text-align: center;
+    opacity: 0.6;
+}
+
+.char-binder-settings .cb-css-card {
+    border: 1px solid var(--cb-line);
+    border-radius: var(--cb-radius);
+    background: var(--black30a);
+}
+
+.char-binder-settings .cb-css-head {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--cb-sp) * 3);
+    padding: calc(var(--cb-sp) * 2) calc(var(--cb-sp) * 3);
+}
+
+.char-binder-settings .cb-css-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: calc(var(--cb-sp) * 2);
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    font-weight: var(--cb-strong);
+}
+
+.char-binder-settings .cb-css-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.char-binder-settings .cb-css-chevron {
+    font-size: 0.75em;
+    transition: transform 0.2s;
+}
+
+.char-binder-settings .cb-css-card.cb-open .cb-css-chevron {
+    transform: rotate(90deg);
+}
+
+.char-binder-settings .cb-css-edit,
+.char-binder-settings .cb-css-del {
+    flex: 0 0 auto;
+    cursor: pointer;
+    opacity: 0.55;
+}
+
+.char-binder-settings .cb-css-edit:hover,
+.char-binder-settings .cb-css-edit:focus-visible,
+.char-binder-settings .cb-css-del:hover,
+.char-binder-settings .cb-css-del:focus-visible {
+    opacity: 1;
+}
+
+/* 이름 수정 모드: 제목 대신 입력칸을 보여 준다 */
+.char-binder-settings .cb-css-name-input {
+    display: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    margin: 0;
+}
+
+.char-binder-settings .cb-css-card.cb-renaming .cb-css-name {
+    display: none;
+}
+
+.char-binder-settings .cb-css-card.cb-renaming .cb-css-name-input {
+    display: block;
+}
+
+.char-binder-settings .cb-css-body {
+    display: none;
+    padding: 0 calc(var(--cb-sp) * 3) calc(var(--cb-sp) * 3);
+}
+
+.char-binder-settings .cb-css-card.cb-open .cb-css-body {
+    display: block;
+}
+
+.char-binder-settings .cb-css-body .text_pole {
+    margin: 0 0 calc(var(--cb-sp) * 2);
+}
+
+.char-binder-settings .cb-css-body textarea {
+    margin-bottom: 0;
+    font-family: monospace;
+}
+
+.char-binder-settings .cb-css-add {
+    margin: calc(var(--cb-sp) * 3) 0 calc(var(--cb-sp) * 2);
+}
+
+/* QR 세트 목록 */
+.char-binder-settings .cb-qr-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 160px;
+    overflow-y: auto;
+    margin-top: 6px;
+    padding: 6px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    background: var(--black30a);
+}
+
+.char-binder-settings textarea {
+    width: 100%;
+    resize: vertical;
+}
+
+.char-binder-settings .cb-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 14px;
+}
+
+/* ===== 캐릭터 편집 화면 바로가기 (ST 팝업 안에 들어가는 내용) ===== */
+.char-binder-settings.cb-popup {
+    text-align: left;
+}
+
+.char-binder-settings .cb-popup-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: calc(var(--cb-sp) * 2);
+    margin: 0 0 calc(var(--cb-sp) * 4);
+}
+
+.char-binder-settings .cb-popup-title small {
+    opacity: 0.6;
+    font-weight: normal;
+}
+
+.char-binder-settings .cb-menu-list {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--cb-sp) * 2);
+}
+
+.char-binder-settings .cb-menu-item {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--cb-sp) * 3);
+    padding: calc(var(--cb-sp) * 2.5) calc(var(--cb-sp) * 3);
+    border: 1px solid var(--cb-line);
+    border-radius: var(--cb-radius);
+    cursor: pointer;
+}
+
+.char-binder-settings .cb-menu-item i {
+    width: 1.2em;
+    text-align: center;
+    opacity: 0.8;
+}
+
+.char-binder-settings .cb-menu-item:hover,
+.char-binder-settings .cb-menu-item:focus-visible {
+    background: var(--white30a, rgba(255, 255, 255, 0.12));
+    outline: none;
+}
+
+/* 팝업 안에서는 박스 테두리/제목/접기 없이 내용만 */
+.char-binder-settings .cb-box.cb-in-modal {
+    margin: 0;
+    padding: 0;
+    border: 0 !important;
+}
+
+.char-binder-settings .cb-box.cb-in-modal > legend,
+.char-binder-settings .cb-box.cb-in-modal > .cb-fold-hint {
+    display: none;
+}
+
+.char-binder-settings .cb-box.cb-in-modal > .cb-item:first-of-type {
+    padding-top: 0;
+}
+
+/* 그룹 메뉴 */
+.char-binder-settings .cb-menu-hint {
+    margin: 0 0 calc(var(--cb-sp) * 3);
+    text-align: center;
+    font-size: 0.85em;
+    opacity: 0.65;
+}
+
+.char-binder-settings .cb-menu-sep {
+    margin: calc(var(--cb-sp) * 4) 0 calc(var(--cb-sp) * 3);
+    border-top: 1px solid var(--cb-line);
+}
+
+.char-binder-settings .cb-menu-item .cb-menu-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.char-binder-settings .cb-menu-item .cb-menu-note {
+    flex: 0 0 auto;
+    opacity: 0.6;
+}
+
+.char-binder-settings .cb-menu-item.cb-dim {
+    opacity: 0.6;
+}
+
+/* 남은 설정 정리 팝업의 목록 */
+.char-binder-settings .cb-orphan-list {
+    max-height: 240px;
+    overflow-y: auto;
+    padding: calc(var(--cb-sp) * 2) calc(var(--cb-sp) * 3);
+    border: 1px solid var(--cb-line);
+    border-radius: var(--cb-radius);
+    font-size: 0.9em;
+    word-break: break-all;
+}
+
+.char-binder-settings .cb-orphan-list > div + div {
+    margin-top: calc(var(--cb-sp) * 1);
+}

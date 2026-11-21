@@ -1,0 +1,11 @@
+{
+    "display_name": "Bind a Few More",
+    "loading_order": 20,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "nunca",
+    "version": "1.0.0",
+    "homePage": ""
+}
