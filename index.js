@@ -21,7 +21,7 @@ const BG_METADATA_KEY = 'custom_background';
 const defaults = {
     bgColumns: 3,
     bgPreload: false,      // 바인딩된 배경 이미지를 미리 받아 메모리에 잡아 둘지 (기본 꺼짐)
-    // { [characterAvatar | "group:<id>"]: { enabled, theme, preset, source, model, background, qrSets[], cssSnippets[{ id, name, css, enabled }] } }
+    // { [characterAvatar | "group:<id>"]: { enabled, theme, connMode('preset'|'profile'), profile, preset, source, model, background, qrSets[], cssSnippets[{ id, name, css, enabled }] } }
     bindings: {},
 };
 
@@ -60,10 +60,19 @@ function createMenuPopup($content, options = {}) {
     return new Popup($content[0], POPUP_TYPE.TEXT, '', { okButton: 'Close', allowVerticalScrolling: true, ...options });
 }
 
-// ST 버전에 따라 getBackgroundPath 가 없을 수 있어서 직접 만든다 (ST 와 같은 경로 규칙)
+// 걍 대충 클로드가 만들어준 방어용들 막 필요한진 모르겠지만
 function getBackgroundPath(file) {
     if (typeof backgroundsModule.getBackgroundPath === 'function') return backgroundsModule.getBackgroundPath(file);
     return `backgrounds/${encodeURIComponent(file)}`;
+}
+
+function plain(v) {
+    return String(v ?? '').replace(/[<>]/g, '');
+}
+
+const MODEL_NAME_MAX = 200;
+function sanitizeModelName(v) {
+    return String(v ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, MODEL_NAME_MAX);
 }
 
 function debounce(fn, ms) {
@@ -110,7 +119,7 @@ function getCurrentBinding(target = getTarget()) {
 }
 
 function isEmptyBinding(b) {
-    return !b.theme && !b.preset && !b.source && !b.model && !b.background && !(b.qrSets ?? []).length && !(b.cssSnippets ?? []).length;
+    return !b.theme && !b.profile && !b.preset && !b.source && !b.model && !b.background && !(b.qrSets ?? []).length && !(b.cssSnippets ?? []).length;
 }
 
 // 저장된 설정이 하나라도 있는지. qrNames 는 ST 쪽에 연결된 QR 세트 이름 (캐릭터용)
@@ -254,8 +263,8 @@ const MODEL_FIELD_BY_SOURCE = {
 function findModelField(source) {
     const mapped = MODEL_FIELD_BY_SOURCE[source];
     return (mapped && document.querySelector(mapped))
-        ?? document.querySelector(`#model_${source}_select`)
-        ?? document.querySelector(`#${source}_form select[id^="model_"]`);
+        ?? document.querySelector(`#model_${CSS.escape(source)}_select`)
+        ?? document.querySelector(`#${CSS.escape(source)}_form select[id^="model_"]`);
 }
 
 // 모델명을 입력칸에 넣고 ST 의 change/input 핸들러를 태운다. 실제로 바꿨을 때만 true
@@ -288,9 +297,10 @@ let modelRunId = 0; // 새 적용이 시작되면 올라간다 (대기 중이던
 // notify: 실제로 소스/모델이 바뀌었을 때만 어디로 바뀌었는지 토스트로 알린다 (대화가 가는 곳이 바뀌므로)
 function applyModel(b, delay = 500, notify = true) {
     const runId = ++modelRunId;
-    if (main_api !== 'openai' || !b || (!b.source && !b.model)) return; // Chat Completion일 때만 동작
-    const name = getTarget()?.name ?? '';
-    setTimeout(() => {
+    const model = sanitizeModelName(b?.model);
+    if (main_api !== 'openai' || !b || (!b.source && !model)) return; // Chat Completion일 때만 동작
+    const name = plain(getTarget()?.name);
+    setTimeout(() => safeRun('model', () => {
         if (runId !== modelRunId) return;
         const $src = $('#chat_completion_source');
         let switched = false;
@@ -302,20 +312,45 @@ function applyModel(b, delay = 500, notify = true) {
         const finish = (modelChanged) => {
             if (!notify || (!switched && !modelChanged)) return;
             const label = $src.find('option:selected').text().trim() || String($src.val() ?? '');
-            const dest = [label, b.model].filter(Boolean).join(' / ');
+            const dest = plain([label, model].filter(Boolean).join(' / '));
             toastr.info(`${name ? `${name}: ` : ''}switched to ${dest}`, EXT_NAME);
         };
 
-        if (!b.model) {
+        if (!model) {
             finish(false);
             return;
         }
         const source = $src.val();
-        setTimeout(() => {
-            if (runId !== modelRunId) return;
-            finish(setModelValue(source, b.model));
-        }, switched ? 400 : 0);
-    }, delay);
+        setTimeout(() => safeRun('model', () => {
+            if (runId === modelRunId) finish(setModelValue(source, model));
+        }), switched ? 400 : 0);
+    }), delay);
+}
+
+// ---- Connection Profile ----
+// ST 내장 Connection Profiles 확장의 드롭다운(#connection_profiles)을 이름으로 전환한다 (테마/프리셋과 같은 방식)
+function profilesAvailable() {
+    return !!document.getElementById('connection_profiles');
+}
+
+function applyProfile(name, notify = true) {
+    if (!name || !profilesAvailable()) return;
+    if (switchSelect($('#connection_profiles'), name) && notify) {
+        const who = plain(getTarget()?.name);
+        toastr.info(`${who ? `${who}: ` : ''}switched to profile "${plain(name)}"`, EXT_NAME);
+    }
+}
+
+function safeRun(label, fn) {
+    try { fn(); } catch (err) { console.warn(`[${EXT_NAME}] Failed to apply ${label}`, err); }
+}
+
+// 연결 방식은 둘 중 하나만 적용
+function applyConnection(b, { delay = 500, notify = true } = {}) {
+    const useProfile = b?.connMode === 'profile';
+    safeRun('profile', () => applyProfile(useProfile ? b.profile : '', notify));
+    safeRun('preset', () => applyPreset(useProfile ? '' : b?.preset));
+    safeRun('model', () => applyModel(useProfile ? null : b, delay, notify)); // null 이면 대기 중이던 모델 적용도 취소된다
 }
 
 function isUrlValue(v) {
@@ -327,10 +362,7 @@ function bgValueToUrl(value) {
     return isUrlValue(value) ? value : getBackgroundPath(value);
 }
 
-// ---- ST 배경 Lock 과 직접 연동 (슬래시 커맨드를 쓰지 않는다) ----
-// ST 의 Lock 은 chat_metadata.custom_background 에 CSS 값 `url("backgrounds/<인코딩된 파일명>")` 을
-// 저장하는 것이 전부다. 우리도 같은 값을 직접 쓰고 읽으므로, 전역 배경 선택을 건드리지 않고
-// 배경 패널의 Lock 표시와도 항상 일치한다.
+// ---- ST 배경 Lock 과 직접 연동 ----
 
 // 바인딩 값(파일명 또는 URL) → ST 가 저장하는 Lock 값
 function toLockValue(value) {
@@ -558,8 +590,7 @@ function applyForCurrent(qrDelay = 700, force = false) {
     };
     safe('background', () => applyBackground(b?.background)); // 눈에 바로 보이는 것부터 (테마 전환은 무거울 수 있어서 뒤로)
     safe('theme', () => applyTheme(b?.theme));
-    safe('preset', () => applyPreset(b?.preset));
-    safe('model', () => applyModel(b)); // 프리셋 뒤에 (프리셋이 소스/모델도 바꾸므로)
+    safe('connection', () => applyConnection(b)); // 프로파일, 또는 프리셋 → 소스 → 모델 (프리셋이 소스/모델도 바꾸므로 이 순서)
     safe('css', () => applyCss(b?.cssSnippets));
     if (b && target) safe('QR', () => scheduleQr(target, b, qrDelay, force));
 }
@@ -818,7 +849,7 @@ function renderQrList(target, groupSelected) {
 const selectFilledFrom = {}; // selector → 마지막으로 채울 때의 원본 <option> 개수
 
 // 원본 <select> 의 옵션 개수가 그대로면 다시 만들지 않는다
-function fillSelectFrom(selector, sourceSelector, emptyLabel, force) {
+function fillSelectFrom(selector, sourceSelector, emptyLabel, force, skipEmptyValue = false) {
     const source = document.querySelectorAll(`${sourceSelector} option`);
     if (!force && selectFilledFrom[selector] === source.length) return;
     selectFilledFrom[selector] = source.length;
@@ -833,7 +864,7 @@ function fillSelectFrom(selector, sourceSelector, emptyLabel, force) {
     frag.append(makeOption('', emptyLabel));
     for (const o of source) {
         const text = o.textContent.trim();
-        if (text) frag.append(makeOption(text, text));
+        if (text && !(skipEmptyValue && o.value === '')) frag.append(makeOption(text, text));
     }
     document.querySelector(selector).replaceChildren(frag);
 }
@@ -859,7 +890,7 @@ function fillSourceSelect(force) {
     document.querySelector('#cb_source').replaceChildren(frag);
 }
 
-// only 를 주면 그 항목('theme' | 'preset' | 'model' | 'bg' | 'qr' | 'css')만 다시 그린다
+// only 를 주면 그 항목('theme' | 'conn' | 'bg' | 'qr' | 'css')만 다시 그린다
 async function refreshUI(force = false, reloadBg = false, only = null) {
     // 설정 패널이 닫혀 있으면 갤러리/QR 목록을 다시 그리지 않는다 (채팅 전환 때마다 돌던 무거운 작업)
     if (!force && !isShown(document.querySelector('.char-binder-settings .inline-drawer-content'))) return;
@@ -882,14 +913,20 @@ async function refreshUI(force = false, reloadBg = false, only = null) {
         fillSelectFrom('#cb_theme', '#themes', '(No change)', reloadBg);
         $('#cb_theme').val(b.theme ?? '');
     }
-    if (want('preset')) {
+    if (want('conn')) {
+        const hasProfiles = profilesAvailable();
+        fillSelectFrom('#cb_profile', '#connection_profiles', '(No change)', reloadBg, true);
         fillSelectFrom('#cb_preset', '#settings_preset_openai', '(No change)', reloadBg);
-        $('#cb_preset').val(b.preset ?? '');
-    }
-    if (want('model')) {
         fillSourceSelect(reloadBg);
+        $('#cb_profile').val(b.profile ?? '');
+        $('#cb_preset').val(b.preset ?? '');
         $('#cb_source').val(b.source ?? '');
         $('#cb_model').val(b.model ?? '');
+        $('#cb_profile_hint').text(hasProfiles
+            ? 'Switches to this saved Connection Profile (API, model, templates, etc.).'
+            : 'The Connection Profiles extension was not found (it may be disabled).');
+        $('input[name="cb_conn_mode"][value="profile"]').prop('disabled', !hasProfiles);
+        setConnMode(hasProfiles ? (b.connMode ?? 'preset') : 'preset');
     }
     if (want('bg')) {
         await loadBackgrounds(reloadBg);
@@ -912,7 +949,7 @@ function updateBinding(patch) {
     const target = getTarget();
     if (!target) return false;
     const b = getCurrentBinding(target)
-        ?? { enabled: $('#cb_target_enabled').prop('checked'), theme: '', preset: '', source: '', model: '', background: '', qrSets: [], cssSnippets: [] };
+        ?? { enabled: $('#cb_target_enabled').prop('checked'), theme: '', connMode: $('input[name="cb_conn_mode"]:checked').val() || 'preset', profile: '', preset: '', source: '', model: '', background: '', qrSets: [], cssSnippets: [] };
     Object.assign(b, patch);
     if (isEmptyBinding(b)) delete s.bindings[target.key];
     else s.bindings[target.key] = b;
@@ -934,7 +971,31 @@ function commitPreset(value) {
 function commitModel(patch) {
     if (!updateBinding(patch)) return;
     const b = getCurrentBinding();
-    applyModel(b?.enabled !== false ? b : null, 0, false); // 직접 바꾼 거라 토스트는 생략
+    applyModel(b?.enabled !== false && b?.connMode !== 'profile' ? b : null, 0, false); // 직접 바꾼 거라 토스트는 생략
+}
+
+function commitProfile(value) {
+    if (!updateBinding({ profile: value })) return;
+    if (getCurrentBinding()?.enabled !== false) applyProfile(value, false);
+}
+
+// 연결 방식(프로파일 / 프리셋+모델) 칸 활성화: 고르지 않은 쪽은 흐리게 하고 클릭/포커스를 막는다
+function setConnMode(mode) {
+    const useProfile = mode === 'profile';
+    $(`input[name="cb_conn_mode"][value="${useProfile ? 'profile' : 'preset'}"]`).prop('checked', true);
+    for (const [id, off] of [['cb_conn_profile_item', !useProfile], ['cb_conn_preset_item', useProfile]]) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        el.inert = off;
+        el.classList.toggle('cb-disabled', off);
+    }
+}
+
+function commitConnMode(mode) {
+    setConnMode(mode);
+    if (!updateBinding({ connMode: mode })) return;
+    const b = getCurrentBinding();
+    applyConnection(b?.enabled !== false ? b : null, { delay: 0 });
 }
 
 // ---- 추가 CSS ----
@@ -1063,7 +1124,7 @@ async function clearBinding() {
 
     applyForCurrent(0, true);
     refreshUI(true);
-    toastr.info(`Removed the binding for ${target.name}.`, EXT_NAME);
+    toastr.info(`Removed the binding for ${plain(target.name)}.`, EXT_NAME);
 }
 
 // 지워졌거나 더 이상 없는 캐릭터/그룹에 남아 있는 바인딩 키들
@@ -1146,24 +1207,29 @@ function buildUI() {
                         <small class="cb-desc cb-fold-hint">UI theme to apply when this character is opened.</small>
                     </fieldset>
 
-                    <fieldset data-cb-section="preset" data-cb-icon="fa-solid fa-sliders" data-cb-label="Chat Completion Preset" class="cb-box cb-collapsible cb-collapsed">
-                        <legend class="cb-toggle" tabindex="0" role="button" aria-expanded="false"><i class="fa-solid fa-sliders"></i>Chat Completion Preset<i class="fa-solid fa-chevron-right cb-chevron"></i></legend>
+                    <fieldset data-cb-section="conn" data-cb-icon="fa-solid fa-plug" data-cb-label="Connection" class="cb-box cb-collapsible cb-collapsed">
+                        <legend class="cb-toggle" tabindex="0" role="button" aria-expanded="false"><i class="fa-solid fa-plug"></i>Connection<i class="fa-solid fa-chevron-right cb-chevron"></i></legend>
                         <div class="cb-item">
-                            <select id="cb_preset" class="text_pole"></select>
-                            <small class="cb-hint">Presets only switch when the current API is Chat Completion.</small>
+                            <div class="cb-mode">
+                                <label class="cb-mode-opt"><input type="radio" name="cb_conn_mode" value="profile"><span>Connection Profile</span></label>
+                                <label class="cb-mode-opt"><input type="radio" name="cb_conn_mode" value="preset" checked><span>Preset + Model</span></label>
+                            </div>
+                            <small class="cb-desc">Only the selected mode is applied. Settings in the other mode are kept but ignored.</small>
                         </div>
-                        <small class="cb-desc cb-fold-hint">Chat Completion preset to apply when this character is opened.</small>
-                    </fieldset>
-
-                    <fieldset data-cb-section="model" data-cb-icon="fa-solid fa-microchip" data-cb-label="Chat Completion Source &amp; Model" class="cb-box cb-collapsible cb-collapsed">
-                        <legend class="cb-toggle" tabindex="0" role="button" aria-expanded="false"><i class="fa-solid fa-microchip"></i>Chat Completion Source &amp; Model<i class="fa-solid fa-chevron-right cb-chevron"></i></legend>
-                        <div class="cb-item">
+                        <div class="cb-item" id="cb_conn_profile_item">
+                            <div class="cb-sub-title">Connection Profile</div>
+                            <select id="cb_profile" class="text_pole"></select>
+                            <small id="cb_profile_hint" class="cb-hint"></small>
+                        </div>
+                        <div class="cb-item" id="cb_conn_preset_item">
+                            <div class="cb-sub-title">Preset + Model</div>
+                            <select id="cb_preset" class="text_pole"></select>
                             <select id="cb_source" class="text_pole"></select>
                             <input id="cb_model" class="text_pole" type="text" autocomplete="off"
                                    placeholder="Model name (type the provider's model ID exactly)" />
-                            <small class="cb-hint">Applied after the preset, only when the current API is Chat Completion. Leave the source on "(No change)" to enter a model for whichever source is active.</small>
+                            <small class="cb-hint">Chat Completion only. Applied in this order: preset, source, model. Leave the source on "(No change)" to enter a model for whichever source is active.</small>
                         </div>
-                        <small class="cb-desc cb-fold-hint">Source and model to switch to when this character is opened.</small>
+                        <small class="cb-desc cb-fold-hint">Connection Profile, or preset and model, to switch to when this character is opened.</small>
                     </fieldset>
 
                     <fieldset data-cb-section="bg" data-cb-icon="fa-solid fa-image" data-cb-label="Background" id="cb_box_bg" class="cb-box cb-collapsible cb-collapsed">
@@ -1304,8 +1370,14 @@ function buildUI() {
     });
     $('#cb_theme').on('change', function () { commitTheme($(this).val()); });
     $('#cb_preset').on('change', function () { commitPreset($(this).val()); });
+    $('#cb_profile').on('change', function () { commitProfile($(this).val()); });
+    $('input[name="cb_conn_mode"]').on('change', function () { commitConnMode($(this).val()); });
     $('#cb_source').on('change', function () { commitModel({ source: $(this).val() }); });
-    $('#cb_model').on('change', function () { commitModel({ model: $(this).val().trim() }); });
+    $('#cb_model').on('change', function () {
+        const model = sanitizeModelName($(this).val());
+        $(this).val(model);
+        commitModel({ model });
+    });
     $('#cb_qr_list').on('change', 'input[type="checkbox"]', commitQr);
     $('#cb_css_add').on('click', addCssSnippet);
     const cssTimers = {};
@@ -1497,12 +1569,12 @@ async function importMemberBinding(avatar, name) {
     const qrNames = getCharacterQrNames(avatar);
     const snippets = (src?.cssSnippets ?? []).map(sn => ({ ...sn, id: newCssId() }));
     if (!hasSavedSettings(src, qrNames)) {
-        toastr.info(`${name} has no saved settings.`, EXT_NAME);
+        toastr.info(`${plain(name)} has no saved settings.`, EXT_NAME);
         return;
     }
 
     const ok = await new Popup(
-        `Import ${name}'s settings (theme, preset, source/model, background, QR, CSS) into this group?\nThis will overwrite the group's existing settings.`,
+        `Import ${name}'s settings (theme, connection, background, QR, CSS) into this group?\nThis will overwrite the group's existing settings.`,
         POPUP_TYPE.CONFIRM, '', { okButton: 'Import', cancelButton: 'Cancel' },
     ).show();
     if (ok !== POPUP_RESULT.AFFIRMATIVE) return;
@@ -1511,6 +1583,8 @@ async function importMemberBinding(avatar, name) {
     s.bindings[target.key] = {
         enabled: true,
         theme: src?.theme ?? '',
+        connMode: src?.connMode ?? 'preset',
+        profile: src?.profile ?? '',
         preset: src?.preset ?? '',
         source: src?.source ?? '',
         model: src?.model ?? '',
@@ -1519,13 +1593,13 @@ async function importMemberBinding(avatar, name) {
         cssSnippets: snippets,
     };
     saveSettingsDebounced();
-    
+
     if (!src?.background) releaseLockFor(prev?.background);
     releaseGroupQr((prev?.qrSets ?? []).filter(n => !qrNames.includes(n)));
 
     applyForCurrent(0, true);
     await refreshUI(true);
-    toastr.success(`Imported ${name}'s settings into this group.`, EXT_NAME);
+    toastr.success(`Imported ${plain(name)}'s settings into this group.`, EXT_NAME);
 }
 
 // 설정 패널의 해당 박스를 그대로 팝업에 띄운다 (같은 요소라서 설정 패널과 항상 같은 상태)
@@ -1567,7 +1641,7 @@ async function openSectionPopup(section) {
     }
 }
 
-// 캐릭터 / 그룹 편집 화면에 아이콘
+// 캐릭터 / 그룹 편집 화면
 function installQuickButton() {
     const spots = [
         ['#favorite_button', 'cb_quick_button'],            // 캐릭터
@@ -1599,6 +1673,7 @@ jQuery(async () => {
     installQuickButton();
     hookBackgroundPanel();
 
+    // QR 확장이 새 캐릭터 설정을 로드한 뒤에 UI를 갱신해야 체크 상태가 어긋나지 않는다
     const refreshUiLater = debounce(() => refreshUI(), 800);
     eventSource.on(event_types.CHAT_CHANGED, () => {
         applyForCurrent();
