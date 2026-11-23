@@ -1519,8 +1519,7 @@ async function importMemberBinding(avatar, name) {
         cssSnippets: snippets,
     };
     saveSettingsDebounced();
-
-    // 이전 그룹 설정이 걸어 둔 것 중, 새 설정에 없는 것은 풀어 준다
+    
     if (!src?.background) releaseLockFor(prev?.background);
     releaseGroupQr((prev?.qrSets ?? []).filter(n => !qrNames.includes(n)));
 
@@ -1568,7 +1567,7 @@ async function openSectionPopup(section) {
     }
 }
 
-// 캐릭터 / 그룹 편집 화면의 즐겨찾기(별) 버튼 오른쪽에 바로가기 아이콘을 단다
+// 캐릭터 / 그룹 편집 화면에 아이콘
 function installQuickButton() {
     const spots = [
         ['#favorite_button', 'cb_quick_button'],            // 캐릭터
@@ -1600,7 +1599,6 @@ jQuery(async () => {
     installQuickButton();
     hookBackgroundPanel();
 
-    // QR 확장이 새 캐릭터 설정을 로드한 뒤에 UI를 갱신해야 체크 상태가 어긋나지 않는다
     const refreshUiLater = debounce(() => refreshUI(), 800);
     eventSource.on(event_types.CHAT_CHANGED, () => {
         applyForCurrent();
