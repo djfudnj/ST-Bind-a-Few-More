@@ -2,8 +2,23 @@
 
 A SillyTavern extension that binds a few settings to each character or group.
 
-Everything is managed from the extension panel, or from the shortcut icon next to the ★ (favorite) button in the character / group editor.
 
+
+
+Everything is managed from the extension panel
+
+<p align="center">
+  <img width="514" height="730" alt="image" src="https://github.com/user-attachments/assets/eb0194de-2626-49c8-9484-6b795dbed61e" />
+</p>
+
+
+or from the shortcut icon next to the ★ (favorite) button in the character management.
+
+<p align="center">
+<img width="510" height="226" alt="image" src="https://github.com/user-attachments/assets/05c8c73e-89f1-4a5b-bf49-8054b299f126" />
+
+<img width="587" height="413" alt="image" src="https://github.com/user-attachments/assets/00f7eb2f-2d16-4e9a-b516-c730752eed49" />
+</p>
 <br>
 
 ## What You Can Bind
@@ -38,7 +53,3 @@ Binds a background to the chat using SillyTavern's own **Lock**, so it stays in 
 Add as many CSS snippets as you like. Each has its own name, on/off switch, rename, and delete. Applied after the theme's Custom CSS, so yours wins when selectors match.
 
 
-
-```
-<your-repository-url>
-```
