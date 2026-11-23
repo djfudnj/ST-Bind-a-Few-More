@@ -764,8 +764,10 @@ function refreshBgUi(b) {
     updateLockStatus();
 }
 
-function refreshBgPanel() {
+async function refreshBgPanel() {
     if (!isShown(document.getElementById('cb_bg_grid'))) return updateLockStatus();
+    await loadBackgrounds();
+    if (!isShown(document.getElementById('cb_bg_grid'))) return;
     refreshBgUi(getCurrentBinding());
 }
 
@@ -929,13 +931,19 @@ async function refreshUI(force = false, reloadBg = false, only = null) {
         setConnMode(hasProfiles ? (b.connMode ?? 'preset') : 'preset');
     }
     if (want('bg')) {
-        await loadBackgrounds(reloadBg);
-        // 기다리는 사이에 더 새로운 갱신이 시작됐거나 캐릭터/그룹이 바뀌었으면, 옛 데이터로 화면을 그리지 않는다
-        // (대상이 바뀐 경우는 CHAT_CHANGED 쪽 갱신이 새로 그려 준다)
-        if (seq !== refreshSeq || getTarget()?.key !== target.key) return;
         $('#cb_bg_cols').val(s.bgColumns);
         $('#cb_bg_preload').prop('checked', s.bgPreload);
-        refreshBgUi(b);
+        // 배경 목록은 갤러리가 실제로 보일 때만 읽는다 (접혀 있으면 펼칠 때 refreshBgPanel 이 읽음)
+        if (isShown(document.getElementById('cb_bg_grid'))) {
+            await loadBackgrounds(reloadBg);
+            // 기다리는 사이에 더 새로운 갱신이 시작됐거나 캐릭터/그룹이 바뀌었으면, 옛 데이터로 화면을 그리지 않는다
+            // (대상이 바뀐 경우는 CHAT_CHANGED 쪽 갱신이 새로 그려 준다)
+            if (seq !== refreshSeq || getTarget()?.key !== target.key) return;
+            refreshBgUi(b);
+        } else {
+            if (reloadBg) backgroundListDomCount = -1; // 접힌 채로 "Reload lists"를 눌렀으면 다음에 펼칠 때 다시 읽게
+            updateLockStatus();
+        }
     }
     if (want('qr')) renderQrList(target, b.qrSets ?? []);
     if (want('css')) renderCssList(b);
