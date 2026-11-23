@@ -221,8 +221,47 @@
 }
 
 .char-binder-settings #cb_bg_url,
+.char-binder-settings #cb_source,
 .char-binder-settings #cb_model {
     margin-top: 6px;
+}
+
+/* 연결 방식 선택 (프로파일 / 프리셋 + 모델) */
+.char-binder-settings .cb-mode {
+    display: flex;
+    gap: calc(var(--cb-sp) * 2);
+    margin-bottom: calc(var(--cb-sp) * 2);
+}
+
+.char-binder-settings .cb-mode-opt {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: calc(var(--cb-sp) * 2);
+    padding: calc(var(--cb-sp) * 2) calc(var(--cb-sp) * 3);
+    border: 1px solid var(--cb-line);
+    border-radius: var(--cb-radius);
+    cursor: pointer;
+}
+
+.char-binder-settings .cb-mode-opt input {
+    margin: 0;
+}
+
+.char-binder-settings .cb-mode-opt:has(input:checked) {
+    border-color: var(--cb-accent);
+    background: var(--black30a);
+}
+
+.char-binder-settings .cb-mode-opt:has(input:disabled) {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.char-binder-settings .cb-sub-title {
+    margin-bottom: calc(var(--cb-sp) * 1.5);
+    font-weight: var(--cb-strong);
 }
 
 /* 선택한 배경 미리보기 */
