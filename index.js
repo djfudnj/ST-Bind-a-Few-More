@@ -21,7 +21,7 @@ const BG_METADATA_KEY = 'custom_background';
 const defaults = {
     bgColumns: 3,
     bgPreload: false,      // 바인딩된 배경 이미지를 미리 받아 메모리에 잡아 둘지 (기본 꺼짐)
-    // { [characterAvatar | "group:<id>"]: { enabled, theme, preset, background, qrSets[], cssSnippets[{ id, name, css, enabled }] } }
+    // { [characterAvatar | "group:<id>"]: { enabled, theme, preset, source, model, background, qrSets[], cssSnippets[{ id, name, css, enabled }] } }
     bindings: {},
 };
 
@@ -110,7 +110,7 @@ function getCurrentBinding(target = getTarget()) {
 }
 
 function isEmptyBinding(b) {
-    return !b.theme && !b.preset && !b.background && !(b.qrSets ?? []).length && !(b.cssSnippets ?? []).length;
+    return !b.theme && !b.preset && !b.source && !b.model && !b.background && !(b.qrSets ?? []).length && !(b.cssSnippets ?? []).length;
 }
 
 // 저장된 설정이 하나라도 있는지. qrNames 는 ST 쪽에 연결된 QR 세트 이름 (캐릭터용)
@@ -241,6 +241,81 @@ function applyTheme(name) {
 function applyPreset(name) {
     if (main_api !== 'openai') return; // Chat Completion일 때만 동작
     switchSelect($('#settings_preset_openai'), name);
+}
+
+// ---- Chat Completion Source + 모델 ----
+// 소스별 모델 입력칸. 여기 없는 소스는 아래 findModelField 의 규칙(#model_<소스>_select 등)으로 찾는다
+const MODEL_FIELD_BY_SOURCE = {
+    makersuite: '#model_google_select',
+    custom: '#custom_model_id',
+    azure_openai: '#azure_openai_model',
+};
+
+function findModelField(source) {
+    const mapped = MODEL_FIELD_BY_SOURCE[source];
+    return (mapped && document.querySelector(mapped))
+        ?? document.querySelector(`#model_${source}_select`)
+        ?? document.querySelector(`#${source}_form select[id^="model_"]`);
+}
+
+// 모델명을 입력칸에 넣고 ST 의 change/input 핸들러를 태운다. 실제로 바꿨을 때만 true
+function setModelValue(source, model) {
+    const el = findModelField(source);
+    if (!el) {
+        console.warn(`[${EXT_NAME}] Could not find a model field for source "${source}".`);
+        return false;
+    }
+    if (el.value === model) return false;
+    if (el.tagName === 'SELECT') {
+        // 목록에 없는 모델명도 쓸 수 있게 임시 옵션을 만들어 둔다 (목록을 다시 불러오면 사라지지만 ST 설정값은 유지된다)
+        if (!Array.from(el.options).some(o => o.value === model)) {
+            const opt = document.createElement('option');
+            opt.value = model;
+            opt.textContent = model;
+            el.append(opt);
+        }
+        $(el).val(model).trigger('change');
+    } else {
+        $(el).val(model).trigger('input').trigger('change');
+    }
+    return true;
+}
+
+let modelRunId = 0; // 새 적용이 시작되면 올라간다 (대기 중이던 이전 적용은 스스로 취소)
+
+// 순서: (프리셋은 이미 적용됨) → 소스 전환 → 모델 입력.
+// 프리셋/소스가 바뀌면 ST 가 모델 목록을 다시 채우므로 그 뒤에 모델을 넣는다.
+// notify: 실제로 소스/모델이 바뀌었을 때만 어디로 바뀌었는지 토스트로 알린다 (대화가 가는 곳이 바뀌므로)
+function applyModel(b, delay = 500, notify = true) {
+    const runId = ++modelRunId;
+    if (main_api !== 'openai' || !b || (!b.source && !b.model)) return; // Chat Completion일 때만 동작
+    const name = getTarget()?.name ?? '';
+    setTimeout(() => {
+        if (runId !== modelRunId) return;
+        const $src = $('#chat_completion_source');
+        let switched = false;
+        if (b.source && $src.val() !== b.source && $src.find('option').toArray().some(o => o.value === b.source)) {
+            $src.val(b.source).trigger('change');
+            switched = true;
+        }
+
+        const finish = (modelChanged) => {
+            if (!notify || (!switched && !modelChanged)) return;
+            const label = $src.find('option:selected').text().trim() || String($src.val() ?? '');
+            const dest = [label, b.model].filter(Boolean).join(' / ');
+            toastr.info(`${name ? `${name}: ` : ''}switched to ${dest}`, EXT_NAME);
+        };
+
+        if (!b.model) {
+            finish(false);
+            return;
+        }
+        const source = $src.val();
+        setTimeout(() => {
+            if (runId !== modelRunId) return;
+            finish(setModelValue(source, b.model));
+        }, switched ? 400 : 0);
+    }, delay);
 }
 
 function isUrlValue(v) {
@@ -484,6 +559,7 @@ function applyForCurrent(qrDelay = 700, force = false) {
     safe('background', () => applyBackground(b?.background)); // 눈에 바로 보이는 것부터 (테마 전환은 무거울 수 있어서 뒤로)
     safe('theme', () => applyTheme(b?.theme));
     safe('preset', () => applyPreset(b?.preset));
+    safe('model', () => applyModel(b)); // 프리셋 뒤에 (프리셋이 소스/모델도 바꾸므로)
     safe('css', () => applyCss(b?.cssSnippets));
     if (b && target) safe('QR', () => scheduleQr(target, b, qrDelay, force));
 }
@@ -762,7 +838,28 @@ function fillSelectFrom(selector, sourceSelector, emptyLabel, force) {
     document.querySelector(selector).replaceChildren(frag);
 }
 
-// only 를 주면 그 항목('theme' | 'preset' | 'bg' | 'qr' | 'css')만 다시 그린다
+// Chat Completion Source 목록은 ST 의 #chat_completion_source 에서 그대로 가져온다 (값은 옵션 value, 표시는 텍스트)
+function fillSourceSelect(force) {
+    const source = document.querySelectorAll('#chat_completion_source option');
+    if (!force && selectFilledFrom['#cb_source'] === source.length) return;
+    selectFilledFrom['#cb_source'] = source.length;
+
+    const frag = document.createDocumentFragment();
+    const makeOption = (value, text) => {
+        const o = document.createElement('option');
+        o.value = value;
+        o.textContent = text;
+        return o;
+    };
+    frag.append(makeOption('', '(No change)'));
+    for (const o of source) {
+        const text = o.textContent.trim();
+        if (o.value && text) frag.append(makeOption(o.value, text));
+    }
+    document.querySelector('#cb_source').replaceChildren(frag);
+}
+
+// only 를 주면 그 항목('theme' | 'preset' | 'model' | 'bg' | 'qr' | 'css')만 다시 그린다
 async function refreshUI(force = false, reloadBg = false, only = null) {
     // 설정 패널이 닫혀 있으면 갤러리/QR 목록을 다시 그리지 않는다 (채팅 전환 때마다 돌던 무거운 작업)
     if (!force && !isShown(document.querySelector('.char-binder-settings .inline-drawer-content'))) return;
@@ -789,6 +886,11 @@ async function refreshUI(force = false, reloadBg = false, only = null) {
         fillSelectFrom('#cb_preset', '#settings_preset_openai', '(No change)', reloadBg);
         $('#cb_preset').val(b.preset ?? '');
     }
+    if (want('model')) {
+        fillSourceSelect(reloadBg);
+        $('#cb_source').val(b.source ?? '');
+        $('#cb_model').val(b.model ?? '');
+    }
     if (want('bg')) {
         await loadBackgrounds(reloadBg);
         // 기다리는 사이에 더 새로운 갱신이 시작됐거나 캐릭터/그룹이 바뀌었으면, 옛 데이터로 화면을 그리지 않는다
@@ -810,7 +912,7 @@ function updateBinding(patch) {
     const target = getTarget();
     if (!target) return false;
     const b = getCurrentBinding(target)
-        ?? { enabled: $('#cb_target_enabled').prop('checked'), theme: '', preset: '', background: '', qrSets: [], cssSnippets: [] };
+        ?? { enabled: $('#cb_target_enabled').prop('checked'), theme: '', preset: '', source: '', model: '', background: '', qrSets: [], cssSnippets: [] };
     Object.assign(b, patch);
     if (isEmptyBinding(b)) delete s.bindings[target.key];
     else s.bindings[target.key] = b;
@@ -826,6 +928,13 @@ function commitTheme(value) {
 function commitPreset(value) {
     if (!updateBinding({ preset: value })) return;
     applyPreset(value);
+}
+
+// 소스/모델명: 바꾸면 이 캐릭터의 바인딩에 저장하고 바로 적용 (바인딩이 꺼져 있으면 저장만)
+function commitModel(patch) {
+    if (!updateBinding(patch)) return;
+    const b = getCurrentBinding();
+    applyModel(b?.enabled !== false ? b : null, 0, false); // 직접 바꾼 거라 토스트는 생략
 }
 
 // ---- 추가 CSS ----
@@ -1046,6 +1155,17 @@ function buildUI() {
                         <small class="cb-desc cb-fold-hint">Chat Completion preset to apply when this character is opened.</small>
                     </fieldset>
 
+                    <fieldset data-cb-section="model" data-cb-icon="fa-solid fa-microchip" data-cb-label="Chat Completion Source &amp; Model" class="cb-box cb-collapsible cb-collapsed">
+                        <legend class="cb-toggle" tabindex="0" role="button" aria-expanded="false"><i class="fa-solid fa-microchip"></i>Chat Completion Source &amp; Model<i class="fa-solid fa-chevron-right cb-chevron"></i></legend>
+                        <div class="cb-item">
+                            <select id="cb_source" class="text_pole"></select>
+                            <input id="cb_model" class="text_pole" type="text" autocomplete="off"
+                                   placeholder="Model name (type the provider's model ID exactly)" />
+                            <small class="cb-hint">Applied after the preset, only when the current API is Chat Completion. Leave the source on "(No change)" to enter a model for whichever source is active.</small>
+                        </div>
+                        <small class="cb-desc cb-fold-hint">Source and model to switch to when this character is opened.</small>
+                    </fieldset>
+
                     <fieldset data-cb-section="bg" data-cb-icon="fa-solid fa-image" data-cb-label="Background" id="cb_box_bg" class="cb-box cb-collapsible cb-collapsed">
                         <legend class="cb-toggle" tabindex="0" role="button" aria-expanded="false"><i class="fa-solid fa-image"></i>Background<i class="fa-solid fa-chevron-right cb-chevron"></i></legend>
                         <div class="cb-item">
@@ -1184,6 +1304,8 @@ function buildUI() {
     });
     $('#cb_theme').on('change', function () { commitTheme($(this).val()); });
     $('#cb_preset').on('change', function () { commitPreset($(this).val()); });
+    $('#cb_source').on('change', function () { commitModel({ source: $(this).val() }); });
+    $('#cb_model').on('change', function () { commitModel({ model: $(this).val().trim() }); });
     $('#cb_qr_list').on('change', 'input[type="checkbox"]', commitQr);
     $('#cb_css_add').on('click', addCssSnippet);
     const cssTimers = {};
@@ -1380,7 +1502,7 @@ async function importMemberBinding(avatar, name) {
     }
 
     const ok = await new Popup(
-        `Import ${name}'s settings (theme, preset, background, QR, CSS) into this group?\nThis will overwrite the group's existing settings.`,
+        `Import ${name}'s settings (theme, preset, source/model, background, QR, CSS) into this group?\nThis will overwrite the group's existing settings.`,
         POPUP_TYPE.CONFIRM, '', { okButton: 'Import', cancelButton: 'Cancel' },
     ).show();
     if (ok !== POPUP_RESULT.AFFIRMATIVE) return;
@@ -1390,6 +1512,8 @@ async function importMemberBinding(avatar, name) {
         enabled: true,
         theme: src?.theme ?? '',
         preset: src?.preset ?? '',
+        source: src?.source ?? '',
+        model: src?.model ?? '',
         background: src?.background ?? '',
         qrSets: qrNames,
         cssSnippets: snippets,

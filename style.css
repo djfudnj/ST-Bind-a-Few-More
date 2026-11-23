@@ -220,7 +220,8 @@
     flex: none;
 }
 
-.char-binder-settings #cb_bg_url {
+.char-binder-settings #cb_bg_url,
+.char-binder-settings #cb_model {
     margin-top: 6px;
 }
 
